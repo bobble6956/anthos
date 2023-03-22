@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    configmanagement.gke.io/cluster-selector: anthos-on-gcp
+  name: userservice-dc-on-gcp
+  namespace: boa
+spec:
+  selector:
+    matchLabels:
+      app: userservice
+  template:
+    metadata:
+      labels:
+        app: userservice
+    spec:
+      containers:
+      - env:
+        - name: VERSION
+          value: v0.5.6
+        - name: PORT
+          value: "8080"
+        - name: ENABLE_TRACING
+          value: "true"
+        - name: TOKEN_EXPIRY_SECONDS
+          value: "3600"
+        - name: PRIV_KEY_PATH
+          value: /tmp/.ssh/privatekey
+        - name: LOG_LEVEL
+          value: info
+        envFrom:
+        - configMapRef:
+            name: environment-config
+        - configMapRef:
+            name: accounts-db-config
+        image: gcr.io/bank-of-anthos-ci/userservice:v0.5.6
+        name: userservice
+        ports:
+        - containerPort: 8080
+          name: http-server
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 200m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - all
+          privileged: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /tmp/.ssh
+          name: keys
+          readOnly: true
+        - mountPath: /tmp
+          name: tmp
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      serviceAccountName: bank-of-anthos
+      terminationGracePeriodSeconds: 5
+      volumes:
+      - name: keys
+        secret:
+          items:
+          - key: jwtRS256.key
+            path: privatekey
+          - key: jwtRS256.key.pub
+            path: publickey
+          secretName: jwt-key
+      - emptyDir: {}
+        name: tmp
